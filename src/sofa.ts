@@ -2,7 +2,9 @@ import {
   GraphQLSchema,
   graphql,
   isObjectType,
+  isInterfaceType,
   GraphQLObjectType,
+  GraphQLInterfaceType,
   getNamedType,
   GraphQLNamedType,
   isListType,
@@ -91,10 +93,22 @@ function extractsModels(schema: GraphQLSchema): string[] {
     [name: string]: {
       list?: boolean;
       single?: boolean;
+      relayNode?: boolean;
     };
   } = {};
   const query = schema.getQueryType()!;
   const fields = query.getFields();
+
+  if (isRelaySchema(schema)) {
+    const NodeInterface = schema.getType('Node') as GraphQLInterfaceType;
+    for (const namedType of schema.getImplementations(NodeInterface).objects) {
+      let model = modelMap[namedType.name];
+      if (!model) {
+        model = modelMap[namedType.name] = {};
+      }
+      model.single = true;
+    }
+  }
 
   // if Query[type] (no args) and Query[type](just id as an argument)
 
@@ -174,6 +188,15 @@ function isArrayOf(
 
 function hasID(type: GraphQLNamedType): type is GraphQLObjectType {
   return isObjectType(type) && !!type.getFields().id;
+}
+
+function isRelaySchema(schema: GraphQLSchema): boolean {
+  const nodeField = schema.getQueryType()!.getFields().node;
+  if (!nodeField) {
+    return false;
+  }
+  const nodeType = getNamedType(nodeField.type);
+  return isInterfaceType(nodeType) && !!nodeType.getFields().id;
 }
 
 function isNameEqual(a: string, b: string): boolean {
